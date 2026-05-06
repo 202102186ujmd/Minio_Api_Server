@@ -11,8 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/swaggo/files"
 	"github.com/swaggo/gin-swagger"
-	"github.com/swaggo/gin-swagger/swaggerFiles"
 
 	"github.com/202102186ujmd/Minio_Api_Server/internal/config"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/domain/storage"
