@@ -15,6 +15,7 @@ var (
 	ErrFileTooLarge    = errors.New("el archivo excede el tamaño permitido")
 	ErrMimeNotAllowed  = errors.New("tipo MIME no permitido")
 	ErrInvalidFileName = errors.New("nombre de archivo inválido")
+	ErrInvalidExpiry   = errors.New("expiración fuera de rango")
 )
 
 type Service struct {
@@ -41,8 +42,25 @@ type UploadResult struct {
 	ContentType string `json:"content_type,omitempty"`
 }
 
+type CopyMoveResult struct {
+	Bucket         string `json:"bucket"`
+	ObjectName     string `json:"object_name"`
+	Destination    string `json:"destination"`
+	DestinationKey string `json:"destination_key"`
+	ETag           string `json:"etag"`
+}
+
 func NewService(client *minio.Client, cfg config.Config) *Service {
 	return &Service{client: client, cfg: cfg}
+}
+
+func (s *Service) Ping(ctx context.Context) error {
+	_, err := s.client.ListBuckets(ctx)
+	return err
+}
+
+func (s *Service) BucketExists(ctx context.Context, bucket string) (bool, error) {
+	return s.client.BucketExists(ctx, bucket)
 }
 
 func (s *Service) ListBuckets(ctx context.Context) ([]minio.BucketInfo, error) {
@@ -104,6 +122,75 @@ func (s *Service) UploadObject(ctx context.Context, bucket, objectName string, r
 		Location:    info.Location,
 		ContentType: contentType,
 	}, nil
+}
+
+func (s *Service) GetObject(ctx context.Context, bucket, objectName string) (*minio.Object, minio.ObjectInfo, error) {
+	obj, err := s.client.GetObject(ctx, bucket, objectName, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, minio.ObjectInfo{}, err
+	}
+	info, err := obj.Stat()
+	if err != nil {
+		return nil, minio.ObjectInfo{}, err
+	}
+	return obj, info, nil
+}
+
+func (s *Service) PresignURL(ctx context.Context, bucket, objectName, method string, expiry time.Duration) (string, error) {
+	if method == "GET" {
+		url, err := s.client.PresignedGetObject(ctx, bucket, objectName, expiry, nil)
+		if err != nil {
+			return "", err
+		}
+		return url.String(), nil
+	}
+
+	url, err := s.client.PresignedPutObject(ctx, bucket, objectName, expiry)
+	if err != nil {
+		return "", err
+	}
+	return url.String(), nil
+}
+
+func (s *Service) ParseExpiry(value string) (int64, error) {
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+
+	if parsed < 60 || parsed > 604800 {
+		return 0, ErrInvalidExpiry
+	}
+	return parsed, nil
+}
+
+func (s *Service) CopyObject(ctx context.Context, bucket, objectName, destBucket, destObject string) (*CopyMoveResult, error) {
+	src := minio.CopySrcOptions{Bucket: bucket, Object: objectName}
+	dst := minio.CopyDestOptions{Bucket: destBucket, Object: destObject}
+	info, err := s.client.CopyObject(ctx, dst, src)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CopyMoveResult{
+		Bucket:         bucket,
+		ObjectName:     objectName,
+		Destination:    destBucket,
+		DestinationKey: destObject,
+		ETag:           info.ETag,
+	}, nil
+}
+
+func (s *Service) MoveObject(ctx context.Context, bucket, objectName, destBucket, destObject string) (*CopyMoveResult, error) {
+	info, err := s.CopyObject(ctx, bucket, objectName, destBucket, destObject)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.DeleteObject(ctx, bucket, objectName); err != nil {
+		return nil, err
+	}
+	return info, nil
 }
 
 func (s *Service) DeleteObject(ctx context.Context, bucket, objectName string) error {

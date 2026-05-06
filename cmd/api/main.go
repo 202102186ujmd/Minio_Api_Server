@@ -25,8 +25,8 @@ import (
 )
 
 // @title MinIO Management API
-// @version 1.0.0
-// @description API profesional para gestión de MinIO (CRUD de objetos), con validaciones, logging, y respuestas estandarizadas.
+// @version 1.1.0
+// @description API profesional para gestión de MinIO (CRUD de objetos), con validaciones, logging, métricas y respuestas estandarizadas.
 // @termsOfService https://example.com/terms
 // @contact.name Soporte API
 // @contact.url https://example.com/support
@@ -70,11 +70,15 @@ func main() {
 	r.Use(middleware.Logger(logg))
 	r.Use(middleware.Recovery(logg))
 	r.Use(middleware.CORS(cfg))
+	r.Use(middleware.Metrics())
 	r.Use(middleware.APIKey(cfg))
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	routes.Register(r, handlers.NewHealthHandler(), handlers.NewStorageHandler(storageService, cfg))
+	routes.Register(r,
+		handlers.NewHealthHandler(storageService, cfg),
+		handlers.NewStorageHandler(storageService, cfg),
+	)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

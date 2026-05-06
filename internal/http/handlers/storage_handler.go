@@ -6,16 +6,23 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/202102186ujmd/Minio_Api_Server/internal/config"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/domain/storage"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/utils/response"
+	"github.com/202102186ujmd/Minio_Api_Server/internal/utils/validator"
 	"github.com/gin-gonic/gin"
 )
 
 type StorageHandler struct {
 	service *storage.Service
 	cfg     config.Config
+}
+
+type CopyMoveRequest struct {
+	DestinationBucket string `json:"destination_bucket" validate:"required"`
+	DestinationObject string `json:"destination_object" validate:"required"`
 }
 
 func NewStorageHandler(service *storage.Service, cfg config.Config) *StorageHandler {
@@ -132,6 +139,174 @@ func (h *StorageHandler) UploadObject(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusCreated, "CREATED", "Archivo subido", upload)
+}
+
+// DownloadObject
+// @Summary Descargar archivo
+// @Description Descarga un archivo por nombre dentro del bucket.
+// @Tags Objects
+// @Security ApiKeyAuth
+// @Param bucket path string true "Nombre del bucket"
+// @Param object path string true "Nombre del objeto"
+// @Success 200 {file} file "Archivo"
+// @Failure 400 {object} response.APIResponse "Validación"
+// @Failure 401 {object} response.APIResponse "API key inválida"
+// @Failure 404 {object} response.APIResponse "No encontrado"
+// @Failure 500 {object} response.APIResponse "Error interno"
+// @Router /buckets/{bucket}/objects/{object}/download [get]
+func (h *StorageHandler) DownloadObject(c *gin.Context) {
+	bucket := strings.TrimSpace(c.Param("bucket"))
+	object := strings.TrimSpace(c.Param("object"))
+	if bucket == "" || object == "" {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Bucket y objeto requeridos", nil)
+		return
+	}
+
+	obj, info, err := h.service.GetObject(c.Request.Context(), bucket, object)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "MINIO_ERROR", "Error al descargar archivo", err.Error())
+		return
+	}
+	defer obj.Close()
+
+	contentType := info.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
+	c.Header("Content-Disposition", "attachment; filename=\""+filepath.Base(object)+"\"")
+	c.DataFromReader(http.StatusOK, info.Size, contentType, obj, nil)
+}
+
+// PresignObject
+// @Summary Generar URL firmada
+// @Description Genera una URL firmada para GET o PUT.
+// @Tags Objects
+// @Security ApiKeyAuth
+// @Param bucket path string true "Nombre del bucket"
+// @Param object path string true "Nombre del objeto"
+// @Param method query string false "GET o PUT" example("GET")
+// @Param expiry query int false "Expiración en segundos" example(3600)
+// @Success 200 {object} response.APIResponse "URL firmada"
+// @Failure 400 {object} response.APIResponse "Validación"
+// @Failure 401 {object} response.APIResponse "API key inválida"
+// @Failure 500 {object} response.APIResponse "Error interno"
+// @Router /buckets/{bucket}/objects/{object}/presign [get]
+func (h *StorageHandler) PresignObject(c *gin.Context) {
+	bucket := strings.TrimSpace(c.Param("bucket"))
+	object := strings.TrimSpace(c.Param("object"))
+	if bucket == "" || object == "" {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Bucket y objeto requeridos", nil)
+		return
+	}
+
+	method := strings.ToUpper(strings.TrimSpace(c.DefaultQuery("method", "GET")))
+	if method != http.MethodGet && method != http.MethodPut {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Método inválido, usa GET o PUT", nil)
+		return
+	}
+
+	expirySeconds := int64(3600)
+	if q := strings.TrimSpace(c.Query("expiry")); q != "" {
+		parsed, err := h.service.ParseExpiry(q)
+		if err != nil {
+			response.Fail(c, http.StatusBadRequest, "VALIDATION", "Expiración inválida", err.Error())
+			return
+		}
+		expirySeconds = parsed
+	}
+
+	url, err := h.service.PresignURL(c.Request.Context(), bucket, object, method, time.Duration(expirySeconds)*time.Second)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "MINIO_ERROR", "Error al generar URL", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "OK", "URL firmada generada", gin.H{
+		"url":    url,
+		"expiry": expirySeconds,
+		"method": method,
+	})
+}
+
+// CopyObject
+// @Summary Copiar archivo
+// @Description Copia un archivo a otro bucket u objeto.
+// @Tags Objects
+// @Security ApiKeyAuth
+// @Param bucket path string true "Nombre del bucket"
+// @Param object path string true "Nombre del objeto"
+// @Param payload body CopyMoveRequest true "Destino"
+// @Success 200 {object} response.APIResponse "Archivo copiado"
+// @Failure 400 {object} response.APIResponse "Validación"
+// @Failure 401 {object} response.APIResponse "API key inválida"
+// @Failure 500 {object} response.APIResponse "Error interno"
+// @Router /buckets/{bucket}/objects/{object}/copy [post]
+func (h *StorageHandler) CopyObject(c *gin.Context) {
+	bucket := strings.TrimSpace(c.Param("bucket"))
+	object := strings.TrimSpace(c.Param("object"))
+	if bucket == "" || object == "" {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Bucket y objeto requeridos", nil)
+		return
+	}
+
+	var payload CopyMoveRequest
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Payload inválido", err.Error())
+		return
+	}
+	if err := validator.ValidateStruct(payload); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Campos requeridos", err.Error())
+		return
+	}
+
+	info, err := h.service.CopyObject(c.Request.Context(), bucket, object, payload.DestinationBucket, payload.DestinationObject)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "MINIO_ERROR", "Error al copiar archivo", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "OK", "Archivo copiado", info)
+}
+
+// MoveObject
+// @Summary Mover archivo
+// @Description Mueve un archivo a otro bucket u objeto (copia y elimina el original).
+// @Tags Objects
+// @Security ApiKeyAuth
+// @Param bucket path string true "Nombre del bucket"
+// @Param object path string true "Nombre del objeto"
+// @Param payload body CopyMoveRequest true "Destino"
+// @Success 200 {object} response.APIResponse "Archivo movido"
+// @Failure 400 {object} response.APIResponse "Validación"
+// @Failure 401 {object} response.APIResponse "API key inválida"
+// @Failure 500 {object} response.APIResponse "Error interno"
+// @Router /buckets/{bucket}/objects/{object}/move [post]
+func (h *StorageHandler) MoveObject(c *gin.Context) {
+	bucket := strings.TrimSpace(c.Param("bucket"))
+	object := strings.TrimSpace(c.Param("object"))
+	if bucket == "" || object == "" {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Bucket y objeto requeridos", nil)
+		return
+	}
+
+	var payload CopyMoveRequest
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Payload inválido", err.Error())
+		return
+	}
+	if err := validator.ValidateStruct(payload); err != nil {
+		response.Fail(c, http.StatusBadRequest, "VALIDATION", "Campos requeridos", err.Error())
+		return
+	}
+
+	info, err := h.service.MoveObject(c.Request.Context(), bucket, object, payload.DestinationBucket, payload.DestinationObject)
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, "MINIO_ERROR", "Error al mover archivo", err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "OK", "Archivo movido", info)
 }
 
 // DeleteObject
