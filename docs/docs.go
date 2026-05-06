@@ -5,7 +5,7 @@ import "github.com/swaggo/swag"
 const docTemplate = `{
     "swagger": "2.0",
     "info": {
-        "description": "API profesional para gestión de MinIO (CRUD de objetos), con validaciones, logging, y respuestas estandarizadas.",
+        "description": "API profesional para gestión de MinIO (CRUD de objetos), con validaciones, logging, métricas y respuestas estandarizadas.",
         "title": "MinIO Management API",
         "termsOfService": "https://example.com/terms",
         "contact": {
@@ -17,7 +17,7 @@ const docTemplate = `{
             "name": "MIT",
             "url": "https://opensource.org/licenses/MIT"
         },
-        "version": "1.0.0"
+        "version": "1.1.0"
     },
     "host": "localhost:8080",
     "basePath": "/v1",
@@ -33,8 +33,7 @@ const docTemplate = `{
 }`
 
 func init() {
-	swag.Register(swag.Name, &s{}
-	)
+	swag.Register(swag.Name, &s{})
 }
 
 type s struct{}

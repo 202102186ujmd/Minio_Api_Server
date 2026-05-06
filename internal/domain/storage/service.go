@@ -29,7 +29,6 @@ type ObjectInfo struct {
 	ContentType  string    `json:"content_type,omitempty"`
 	LastModified time.Time `json:"last_modified"`
 	ETag         string    `json:"etag"`
-	IsDir        bool      `json:"is_dir"`
 }
 
 type UploadResult struct {
@@ -94,7 +93,6 @@ func (s *Service) ListObjects(ctx context.Context, bucket, prefix string, recurs
 			ContentType:  object.ContentType,
 			LastModified: object.LastModified,
 			ETag:         object.ETag,
-			IsDir:        object.IsDir,
 		})
 
 		count++
