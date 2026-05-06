@@ -5,8 +5,8 @@ import "github.com/swaggo/swag"
 const docTemplate = `{
     "swagger": "2.0",
     "info": {
-        "description": "API profesional para gestión de MinIO (CRUD de objetos), con validaciones, logging, métricas y respuestas estandarizadas.",
-        "title": "MinIO Management API",
+        "description": "{{.Description}}",
+        "title": "{{.Title}}",
         "termsOfService": "https://example.com/terms",
         "contact": {
             "name": "Soporte API",
@@ -17,27 +17,25 @@ const docTemplate = `{
             "name": "MIT",
             "url": "https://opensource.org/licenses/MIT"
         },
-        "version": "1.1.0"
+        "version": "{{.Version}}"
     },
-    "host": "localhost:8080",
-    "basePath": "/v1",
+    "host": "{{.Host}}",
+    "basePath": "{{.BasePath}}",
     "schemes": ["http"],
-    "paths": {},
-    "securityDefinitions": {
-        "ApiKeyAuth": {
-            "type": "apiKey",
-            "name": "X-API-Key",
-            "in": "header"
-        }
-    }
+    "paths": {}
 }`
 
-func init() {
-	swag.Register(swag.Name, &s{})
+// SwaggerInfo guarda metadata editable en runtime.
+var SwaggerInfo = &swag.Spec{
+	Version:          "1.1.0",
+	Host:             "localhost:8080",
+	BasePath:         "/v1",
+	Title:            "MinIO Management API",
+	Description:      "API profesional para gestión de MinIO (CRUD de objetos), con validaciones, logging, métricas y respuestas estandarizadas.",
+	InfoInstanceName: swag.Name,
+	SwaggerTemplate:  docTemplate,
 }
 
-type s struct{}
-
-func (s *s) ReadDoc() string {
-	return docTemplate
+func init() {
+	swag.Register(SwaggerInfo.InstanceName(), SwaggerInfo)
 }

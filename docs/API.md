@@ -10,6 +10,16 @@ Este proyecto expone una API REST profesional para administrar buckets y objetos
 - Swagger UI
 - Métricas Prometheus
 
+## Swagger
+
+Para generar endpoints en Swagger debes ejecutar:
+
+```bash
+swag init -g cmd/api/main.go -o docs
+```
+
+Luego inicia la API y visita `http://localhost:8080/swagger/index.html`.
+
 ## Endpoints
 
 - `GET /health`
@@ -24,13 +34,6 @@ Este proyecto expone una API REST profesional para administrar buckets y objetos
 - `POST /v1/buckets/{bucket}/objects/{object}/copy`
 - `POST /v1/buckets/{bucket}/objects/{object}/move`
 - `DELETE /v1/buckets/{bucket}/objects/{object}`
-
-## Swagger
-
-1. Instalar swag: `go install github.com/swaggo/swag/cmd/swag@latest`
-2. Generar docs: `make swagger`
-3. Iniciar API: `make run`
-4. Visitar: `http://localhost:8080/swagger/index.html`
 
 ## Métricas
 

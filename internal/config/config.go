@@ -8,6 +8,7 @@ import (
 
 type Config struct {
 	AppEnv          string   `env:"APP_ENV" envDefault:"development"`
+	AppHost         string   `env:"APP_HOST" envDefault:"localhost"`
 	Port            string   `env:"APP_PORT" envDefault:"8080"`
 	APIKey          string   `env:"API_KEY,required"`
 	LogLevel        string   `env:"LOG_LEVEL" envDefault:"info"`

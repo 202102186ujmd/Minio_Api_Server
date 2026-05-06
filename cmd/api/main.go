@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"github.com/swaggo/files"
 	"github.com/swaggo/gin-swagger"
 
+	"github.com/202102186ujmd/Minio_Api_Server/docs"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/config"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/domain/storage"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/http/handlers"
@@ -21,7 +23,6 @@ import (
 	"github.com/202102186ujmd/Minio_Api_Server/internal/http/routes"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/infrastructure/minio"
 	"github.com/202102186ujmd/Minio_Api_Server/internal/utils/logger"
-	_ "github.com/202102186ujmd/Minio_Api_Server/docs"
 )
 
 // @title MinIO Management API
@@ -33,7 +34,6 @@ import (
 // @contact.email soporte@example.com
 // @license.name MIT
 // @license.url https://opensource.org/licenses/MIT
-// @host localhost:8080
 // @BasePath /v1
 // @securityDefinitions.apikey ApiKeyAuth
 // @in header
@@ -57,6 +57,9 @@ func main() {
 	if cfg.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
+
+	docs.SwaggerInfo.Host = fmt.Sprintf("%s:%s", cfg.AppHost, cfg.Port)
+	docs.SwaggerInfo.BasePath = "/v1"
 
 	minioClient, err := minio.NewClient(cfg)
 	if err != nil {
